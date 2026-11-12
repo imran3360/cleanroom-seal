@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CleanRoom Seal — Verifiable Redaction on NEAR AI Cloud</title>
+<style>
+  :root{--bg:#0b0e11;--card:#14181d;--line:#262c34;--txt:#e8ecf1;--dim:#9aa7b4;--grn:#2ebd85;--red:#f6465d;--yel:#f0b90b;--blu:#4f8ff7}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--txt);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:20px 14px 60px}
+  .wrap{max-width:980px;margin:0 auto}
+  header{text-align:center;padding:18px 0 8px}
+  .logo{font-size:40px}
+  h1{font-size:30px;letter-spacing:.5px}
+  h1 span{color:var(--grn)}
+  .tag{color:var(--dim);margin-top:6px;font-size:15px}
+  .badges{margin-top:12px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+  .badge{border:1px solid var(--line);border-radius:999px;padding:4px 12px;font-size:12px;color:var(--dim)}
+  .badge b{color:var(--txt)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin-top:16px}
+  .card h2{font-size:17px;margin-bottom:6px}
+  .card h2 .n{display:inline-block;background:var(--grn);color:#06281a;border-radius:50%;width:22px;height:22px;text-align:center;line-height:22px;font-size:13px;margin-right:8px}
+  .hint{color:var(--dim);font-size:13px;margin-bottom:10px;line-height:1.5}
+  label{display:block;font-size:13px;color:var(--dim);margin:10px 0 5px}
+  input,select,textarea{width:100%;background:#0b0e11;border:1px solid var(--line);border-radius:9px;color:var(--txt);padding:11px;font-size:14px;font-family:inherit}
+  textarea{min-height:170px;resize:vertical;line-height:1.55}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:720px){.row{grid-template-columns:1fr}}
+  button{background:var(--grn);color:#06281a;border:0;border-radius:9px;padding:12px 20px;font-size:15px;font-weight:700;cursor:pointer}
+  button:disabled{opacity:.45;cursor:wait}
+  button.ghost{background:transparent;color:var(--txt);border:1px solid var(--line);font-weight:600}
+  button.blue{background:var(--blu);color:#fff}
+  .btnrow{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+  .status{font-size:13px;margin-top:10px;color:var(--dim);min-height:18px;line-height:1.5}
+  .mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;word-break:break-all}
+  .hashgrid{display:grid;grid-template-columns:150px 1fr;gap:6px 12px;font-size:12px;margin-top:8px}
+  .hashgrid .k{color:var(--dim)}
+  .check{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px;line-height:1.5}
+  .check:last-child{border-bottom:0}
+  .ic{font-size:17px;line-height:1.3}
+  .pass{color:var(--grn)} .fail{color:var(--red)} .info{color:var(--yel)}
+  .verdict{border-radius:10px;padding:14px;margin-top:12px;font-weight:700;text-align:center;display:none}
+  .verdict.ok{background:rgba(46,189,133,.12);border:1px solid var(--grn);color:var(--grn)}
+  .verdict.bad{background:rgba(246,70,93,.10);border:1px solid var(--red);color:var(--red)}
+  pre{background:#0b0e11;border:1px solid var(--line);border-radius:9px;padding:12px;font-size:12px;overflow:auto;white-space:pre-wrap;word-break:break-all}
+  a{color:var(--blu)}
+  .small{font-size:12px;color:var(--dim);line-height:1.6}
+  .out{min-height:170px;background:#0b0e11;border:1px solid var(--line);border-radius:9px;padding:11px;font-size:14px;line-height:1.55;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">🛡️</div>
+    <h1>CleanRoom <span>Seal</span></h1>
+    <p class="tag">Paste a sensitive document. NEAR AI redacts it inside a hardware TEE — where not even NEAR can read it.<br>You verify the proof in your browser. Only a hash is sealed on NEAR.</p>
+    <div class="badges">
+      <span class="badge">Track: <b>Privacy &amp; Private AI</b></span>
+      <span class="badge">Built at <b>NEAR HACKATHON</b></span>
+      <span class="badge">Engine: <b>NEAR AI Cloud (TEE)</b></span>
+    </div>
+  </header>
+
+  <div class="card">
+    <h2><span class="n">0</span>Your NEAR AI key</h2>
+    <p class="hint">Bring-your-own key. It stays in this tab's memory only — never stored, never sent anywhere except <span class="mono">cloud-api.near.ai</span>. Get $10 free credit at <a href="https://nearbuilders.org/dashboard" target="_blank" rel="noopener">nearbuilders.org/dashboard</a> (NEAR Builders key), or use a key from <a href="https://cloud.near.ai" target="_blank" rel="noopener">cloud.near.ai</a>.</p>
+    <label>API key</label>
+    <input type="password" id="apiKey" placeholder="Paste your NEAR AI API key here" autocomplete="off">
+    <label>Model (TEE-hosted)</label>
+    <select id="model">
+      <option value="z-ai/glm-5.3-flash" selected>z-ai/glm-5.3-flash</option>
+      <option value="z-ai/glm-5.3">z-ai/glm-5.3</option>
+      <option value="Qwen/Qwen3.6-35B-A3B-FP8">Qwen/Qwen3.6-35B-A3B-FP8</option>
+      <option value="deepseek/deepseek-v3.2">deepseek/deepseek-v3.2</option>
+    </select>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">1</span>The sensitive document</h2>
+    <p class="hint">Use the fictional sample, or paste your own test document. <b>Never paste real personal data into a demo.</b></p>
+    <textarea id="docIn" placeholder="Paste a document with names, addresses, account numbers…"></textarea>
+    <div class="btnrow">
+      <button class="ghost" id="btnSample" type="button">Load fictional sample memo</button>
+      <button id="btnClean" type="button">🔒 Clean inside the TEE</button>
+    </div>
+    <p class="status" id="cleanStatus"></p>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">2</span>Redacted output</h2>
+    <div class="row">
+      <div>
+        <label>Original (never leaves your browser except to the TEE)</label>
+        <div class="out" id="docOrig">—</div>
+      </div>
+      <div>
+        <label>Redacted by the TEE model</label>
+        <div class="out" id="docOut">—</div>
+      </div>
+    </div>
+    <div class="hashgrid mono">
+      <span class="k">completion id</span><span id="hChat">—</span>
+      <span class="k">original SHA-256</span><span id="hOrig">—</span>
+      <span class="k">redacted SHA-256</span><span id="hRed">—</span>
+      <span class="k">request SHA-256</span><span id="hReq">—</span>
+      <span class="k">response SHA-256</span><span id="hRes">—</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">3</span>Verify the proof — in your browser</h2>
+    <p class="hint">Checks run live against <span class="mono">cloud-api.near.ai</span>: the attestation report (fetched <i>before</i> the request, no key needed) and the signature for this exact completion. Hashes are over the <b>exact bytes</b> sent and received, per the NEAR AI verification docs. A red check means <b>not verified</b> — this page never paints a fake green.</p>
+    <div id="checks"><p class="small">Run a clean first — verification runs automatically right after.</p></div>
+    <div class="verdict" id="verdict"></div>
+    <div class="btnrow">
+      <button class="blue" id="btnVerifyCenter" type="button" style="display:none">Open NEAR Verification Center ↗</button>
+    </div>
+    <p class="small" id="sigDetail" style="margin-top:10px"></p>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">4</span>Seal on NEAR</h2>
+    <p class="hint">The chain-of-custody record contains <b>only hashes</b> — never the document. Phase 2 wires this payload to a <span class="mono">seal()</span> contract on NEAR testnet; until then, this is the exact payload that will be sealed.</p>
+    <pre id="sealPayload">{}</pre>
+    <div class="btnrow"><button class="ghost" id="btnCopySeal" type="button">Copy seal payload</button></div>
+    <p class="small" style="margin-top:12px"><b>What this proves — and what it doesn't.</b> A <span class="mono">provider_tee</span> signature binds the reply to a model-serving TEE signer that matches the attestation report. A <span class="mono">gateway</span> signature binds the reply to the attested NEAR AI gateway only — it does <i>not</i> by itself prove model TEE execution, and this page labels it exactly that way. Full Intel TDX quote validation runs in NEAR's Verification Center (linked above); this page checks the signer match and the reply signature cryptographically where the browser supports Ed25519.</p>
+  </div>
+
+  <p class="small" style="text-align:center;margin-top:18px">CleanRoom Seal — built for NEAR HACKATHON, Nov 2026 · Code is public · Demo data is fictional</p>
+</div>
+
+<script>
+const API = "https://cloud-api.near.ai";
+const $ = id => document.getElementById(id);
+const enc = new TextEncoder();
+let state = { reqText:"", resText:"", chatId:"", model:"", report:null, origHash:"", redHash:"", reqHash:"", resHash:"" };
+
+const SAMPLE = `INTERNAL MEMO — Q3 VENDOR PAYMENT REVIEW (FICTIONAL SAMPLE DATA)
+
+From: Sarah Mitchell, Finance Director, Harborline Trading Co.
+To: Daniel Okafor, daniel.okafor@examplemail.com, +1 (415) 555-0132
+Subject: Payment hold — Meridian Legal LLP
+
+Please hold the USD 48,250 payment to Meridian Legal LLP (account
+IBAN GB29 NWBK 6016 1331 9268 19, contact: Priya Raman, +44 20 7946 0318)
+until the review closes. Their office at 418 King Street, Austin, TX 78701
+listed case reference TX-2026-88412 and taxpayer ID 47-2091553 on the invoice.
+
+Also flagged: consultant agreement for Mr. Tomás Herrera, passport
+XUK204517, home address 22 Willow Crescent, Leeds LS8 2QT, fee USD 12,000.
+
+— End of memo (all names, numbers and addresses above are invented for this demo).`;
+
+async function sha256hex(text){
+  const buf = await crypto.subtle.digest("SHA-256", enc.encode(text));
+  return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,"0")).join("");
+}
+function hexToBytes(hex){
+  const h = hex.replace(/^0x/,"");
+  const out = new Uint8Array(h.length/2);
+  for(let i=0;i<out.length;i++) out[i]=parseInt(h.substr(i*2,2),16);
+  return out;
+}
+function sigToBytes(sig){
+  if(!sig) return null;
+  if(/^[0-9a-fA-F]+$/.test(sig) && sig.length % 2 === 0) return hexToBytes(sig);
+  try{ const bin = atob(sig.replace(/-/g,"+").replace(/_/g,"/")); const out=new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++) out[i]=bin.charCodeAt(i); return out; }catch(e){ return null; }
+}
+function findSigners(report){
+  const found = { gateway:null, models:[] };
+  if(!report) return found;
+  if(report.gateway_attestation && report.gateway_attestation.signing_address)
+    found.gateway = String(report.gateway_attestation.signing_address).toLowerCase();
+  const walk = (o, path) => {
+    if(!o || typeof o !== "object") return;
+    if(o.signing_address && /model|provider|tee/i.test(path)) found.models.push(String(o.signing_address).toLowerCase());
+    for(const k in o) walk(o[k], path + "/" + k);
+  };
+  walk(report.model_attestations || {}, "model");
+  if(!found.models.length && Array.isArray(report.model_attestation_reports))
+    report.model_attestation_reports.forEach(r=>{ if(r && r.signing_address) found.models.push(String(r.signing_address).toLowerCase()); });
+  return found;
+}
+
+async function fetchReport(model){
+  const url = API + "/v1/attestation/report?model_id=" + encodeURIComponent(model) +
+              "&model=" + encodeURIComponent(model) + "&provider=near&signing_algo=ed25519";
+  const r = await fetch(url, { headers:{ "Accept":"application/json" } });
+  if(!r.ok) throw new Error("attestation report HTTP " + r.status);
+  return await r.json();
+}
+
+$("btnSample").onclick = () => { $("docIn").value = SAMPLE; };
+
+$("btnClean").onclick = async () => {
+  const key = $("apiKey").value.trim();
+  const model = $("model").value;
+  const doc = $("docIn").value;
+  const st = $("cleanStatus");
+  if(!key){ st.textContent = "⚠️ Paste your NEAR AI API key first (Step 0)."; return; }
+  if(!doc.trim()){ st.textContent = "⚠️ Paste a document first — or load the fictional sample."; return; }
+  $("btnClean").disabled = true;
+  $("checks").innerHTML = ""; $("verdict").style.display = "none"; $("sigDetail").textContent = "";
+  try{
+    st.textContent = "Fetching attestation report (preflight evidence)…";
+    try{ state.report = await fetchReport(model); }
+    catch(e){ state.report = null; st.textContent = "Attestation preflight failed (" + e.message + ") — continuing; verification will show this honestly."; }
+
+    const bodyObj = {
+      model: model,
+      messages: [
+        { role:"system", content:"You are a redaction engine running inside a confidential enclave. Rewrite the user's document, replacing EVERY personal or sensitive identifier with the block character sequence ███: personal names, company contact names, email addresses, phone numbers, postal/home addresses, bank account numbers, IBANs, taxpayer IDs, passport/ID numbers, and case/reference numbers tied to a person. Keep all other wording, structure, amounts that are not account numbers, and line breaks as close to the original as possible. Output ONLY the redacted document, no commentary, no preamble." },
+        { role:"user", content: doc }
+      ],
+      temperature: 0,
+      max_tokens: 4000
+    };
+    state.reqText = JSON.stringify(bodyObj);           // exact bytes, built once
+    state.model = model;
+    st.textContent = "Redacting inside the TEE… (the model sees the document; the operator cannot)";
+    const resp = await fetch(API + "/v1/chat/completions", {
+      method:"POST",
+      headers:{ "Authorization":"Bearer " + key, "Content-Type":"application/json", "x-no-aliasing":"true", "Accept":"application/json" },
+      body: state.reqText
+    });
+    state.resText = await resp.text();                  // exact response bytes
+    if(!resp.ok) throw new Error("chat completion HTTP " + resp.status + " — " + state.resText.slice(0,220));
+    const data = JSON.parse(state.resText);
+    const out = data.choices && data.choices[0] && data.choices[0].message ? data.choices[0].message.content : "";
+    state.chatId = data.id || "";
+    $("docOrig").textContent = doc;
+    $("docOut").textContent = out || "(empty model output)";
+    state.origHash = await sha256hex(doc);
+    state.redHash = await sha256hex(out);
+    state.reqHash = await sha256hex(state.reqText);
+    state.resHash = await sha256hex(state.resText);
+    $("hChat").textContent = state.chatId || "—";
+    $("hOrig").textContent = state.origHash;
+    $("hRed").textContent = state.redHash;
+    $("hReq").textContent = state.reqHash;
+    $("hRes").textContent = state.resHash;
+    $("sealPayload").textContent = JSON.stringify({
+      app:"cleanroom-seal", version:1, model: model, completion_id: state.chatId,
+      original_sha256: state.origHash, redacted_sha256: state.redHash
+    }, null, 2);
+    st.textContent = "Clean done. Verifying the proof…";
+    await verify(key);
+    st.textContent = "Done.";
+  }catch(e){
+    st.textContent = "❌ " + e.message;
+  }
+  $("btnClean").disabled = false;
+};
+
+async function verify(key){
+  const box = $("checks"); box.innerHTML = "";
+  let pass = 0, fail = 0;
+  const add = (kind, text) => {
+    const d = document.createElement("div"); d.className = "check";
+    d.innerHTML = '<span class="ic ' + kind + '">' + (kind==="pass"?"✅":kind==="fail"?"🛑":"ℹ️") + '</span><span></span>';
+    d.lastChild.textContent = text; box.appendChild(d);
+    if(kind==="pass") pass++; if(kind==="fail") fail++;
+  };
+
+  if(state.report){
+    const s = findSigners(state.report);
+    add("pass", "Attestation report fetched BEFORE the request. Gateway signer: " + (s.gateway || "not found") +
+        (s.models.length ? " · Model TEE signer(s) in report: " + s.models.join(", ") : " · No model attestation in report for this model."));
+  } else {
+    add("fail", "No attestation preflight report — signer match cannot be checked. Treat the reply as UNVERIFIED.");
+  }
+
+  let sig = null;
+  try{
+    const r = await fetch(API + "/v1/signature/" + encodeURIComponent(state.chatId) + "?signing_algo=ed25519",
+      { headers:{ "Authorization":"Bearer " + key, "Accept":"application/json" } });
+    const t = await r.text();
+    if(r.ok){ sig = JSON.parse(t); if(sig.error_code) sig = null; }
+    if(!sig) add("fail", "Signature endpoint returned no usable signature (HTTP " + r.status + "). A reply without a signature is not verified.");
+  }catch(e){ add("fail", "Signature fetch failed: " + e.message); }
+
+  if(sig){
+    const kind = sig.signature_kind || sig.signatureKind || "";
+    const text = sig.text || "";
+    const signer = String(sig.signing_address || "").toLowerCase();
+    const algo = String(sig.signing_algo || sig.signingAlgo || "ed25519").toLowerCase();
+    add("info", "Signature kind: " + (kind || "unknown") + " · algo: " + algo + " · signer: " + (signer || "—"));
+    if(kind === "gateway")
+      add("info", "A gateway signature binds this reply to the attested NEAR AI gateway. It does NOT by itself prove model TEE execution — labelled honestly, per NEAR AI docs.");
+    const expected = kind === "provider_tee"
+      ? state.model + ":" + state.reqHash + ":" + state.resHash
+      : state.reqHash + ":" + state.resHash;
+    if(text === expected) { add("pass", "Signed text matches exactly: SHA-256 of the exact request bytes and response bytes from THIS run."); pass+=0; }
+    else add("fail", "Signed text does NOT match the hashes of this run's exact bytes. Do not trust this reply.");
+    if(text === expected) { /* counted below via crypto check */ }
+
+    const signers = findSigners(state.report);
+    const pool = kind === "provider_tee" ? signers.models : (signers.gateway ? [signers.gateway] : []);
+    const signerMatch = signer && pool.some(p => p === signer || p === signer.replace(/^0x/,"") || signer === p.replace(/^0x/,""));
+    if(state.report) add(signerMatch ? "pass" : "fail",
+      signerMatch ? "Signer matches the preflight attestation evidence (" + (kind === "provider_tee" ? "model TEE report" : "gateway report") + ")."
+                  : "Signer does NOT match the preflight attestation evidence.");
+
+    let cryptoOk = null;
+    if(algo === "ed25519" && signer && sig.signature){
+      try{
+        const pub = hexToBytes(signer);
+        const sigBytes = sigToBytes(sig.signature);
+        if(pub.length === 32 && sigBytes && sigBytes.length === 64){
+          const ck = await crypto.subtle.importKey("raw", pub, { name:"Ed25519" }, false, ["verify"]);
+          cryptoOk = await crypto.subtle.verify({ name:"Ed25519" }, ck, sigBytes, enc.encode(text));
+        }
+      }catch(e){ cryptoOk = null; }
+    }
+    if(cryptoOk === true) add("pass", "Ed25519 signature cryptographically verified in your browser over the signed text.");
+    else if(cryptoOk === false) add("fail", "Ed25519 signature FAILED cryptographic verification.");
+    else add("info", "In-browser Ed25519 check unavailable (browser/algo/signature format) — use the NEAR Verification Center below for the full check.");
+
+    $("sigDetail").innerHTML = 'Signed text: <span class="mono"></span>';
+    $("sigDetail").querySelector(".mono").textContent = text;
+    const vc = $("btnVerifyCenter");
+    vc.style.display = "inline-block";
+    vc.onclick = () => window.open("https://cloud.near.ai/verify?model=" + encodeURIComponent(state.model), "_blank");
+  }
+
+  const v = $("verdict");
+  v.style.display = "block";
+  if(fail === 0 && pass >= 2){ v.className = "verdict ok"; v.textContent = "🟢 PROOF VERIFIED — this redaction is bound by signature to attested NEAR AI infrastructure."; }
+  else { v.className = "verdict bad"; v.textContent = "🔴 NOT FULLY VERIFIED — see the failed checks above. Do not rely on this run."; }
+}
+
+$("btnCopySeal").onclick = async () => {
+  try{ await navigator.clipboard.writeText($("sealPayload").textContent); $("btnCopySeal").textContent = "Copied ✓"; setTimeout(()=>$("btnCopySeal").textContent="Copy seal payload",1500); }catch(e){}
+};
+</script>
+</body>
+</html>
