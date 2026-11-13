@@ -12,7 +12,7 @@ The `seal()` contract is **deployed on NEAR testnet at
 (deploy tx `9oBx4AgsQu81uxLBNKVH6i6kujQMxd6HN8oh7x5bJGgf`) and a first seal is
 recorded on-chain (`seal_count` = 1, verified via RPC). Contract source:
 `seal-contract.js`; build/deploy guide: `DEPLOY.md`. The demo page seals from
-the browser with a testnet wallet (function-call key for this contract only).
+the browser with a testnet wallet via NEAR Wallet Selector (Meteor Wallet).
 
 ## The problem
 Journalists, lawyers, clinics and whistleblowers need AI to clean documents before
@@ -53,7 +53,7 @@ a fake green.
 6. Click **Open NEAR Verification Center** → NEAR's own page re-checks the model
    attestation in your browser.
 7. Click **Connect NEAR testnet wallet** → sign in with a testnet wallet
-   (MyNearWallet testnet), then **Seal this run on NEAR testnet** → the page
+   (NEAR Wallet Selector — Meteor Wallet), then **Seal this run on NEAR testnet** → the page
    calls `seal()` with only the two hashes, the model and the completion id,
    and reports the contract's new `seal_count`. Verify the record yourself on
    [NearBlocks testnet](https://testnet.nearblocks.io/address/imran3360.testnet)
