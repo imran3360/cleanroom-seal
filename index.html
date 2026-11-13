@@ -42,6 +42,7 @@
   .verdict{border-radius:10px;padding:14px;margin-top:12px;font-weight:700;text-align:center;display:none}
   .verdict.ok{background:rgba(46,189,133,.12);border:1px solid var(--grn);color:var(--grn)}
   .verdict.bad{background:rgba(246,70,93,.10);border:1px solid var(--red);color:var(--red)}
+  .verdict.warn{background:rgba(240,185,11,.12);border:1px solid var(--yel);color:var(--yel)}
   pre{background:#0b0e11;border:1px solid var(--line);border-radius:9px;padding:12px;font-size:12px;overflow:auto;white-space:pre-wrap;word-break:break-all}
   a{color:var(--blu)}
   .small{font-size:12px;color:var(--dim);line-height:1.6}
@@ -54,13 +55,17 @@
   <header>
     <div class="logo">🛡️</div>
     <h1>CleanRoom <span>Seal</span></h1>
-    <p class="tag">Paste a sensitive document. NEAR AI redacts it inside a hardware TEE — where not even NEAR can read it.<br>You verify the proof in your browser. Only a hash is sealed on NEAR.</p>
+    <p class="tag">Paste a sensitive document. NEAR AI redacts it inside a hardware TEE — where the operator can't read it.<br>You verify the proof in your browser. Only a hash is sealed on NEAR.</p>
     <div class="badges">
       <span class="badge">Track: <b>Privacy &amp; Private AI</b></span>
       <span class="badge">Built at <b>NEAR HACKATHON</b></span>
       <span class="badge">Engine: <b>NEAR AI Cloud (TEE)</b></span>
     </div>
   </header>
+
+  <div class="card" style="text-align:center;padding:12px 18px">
+    <p class="small" style="font-size:13px">⏱️ <b>No API key?</b> You can still verify a real seal on NEAR testnet in about 10 seconds — <a href="#step5">jump to Step 5 ↓</a></p>
+  </div>
 
   <div class="card">
     <h2><span class="n">0</span>Your NEAR AI key</h2>
@@ -110,6 +115,7 @@
       <span class="k">response SHA-256</span><span id="hRes">—</span>
     </div>
     <p class="small" id="redactReport" style="margin-top:10px"></p>
+    <p class="small" id="leakWarn" style="margin-top:8px;color:var(--red);font-weight:700;display:none"></p>
   </div>
 
   <div class="card">
@@ -134,14 +140,16 @@
     </div>
     <p class="small" id="sealStatus" style="margin-top:10px">Connect a NEAR testnet wallet to seal this run's hashes on-chain. The seal stores hashes only — never the document.</p>
     <p class="small" style="margin-top:12px"><b>What this proves — and what it doesn't.</b> A <span class="mono">provider_tee</span> signature binds the reply to a model-serving TEE signer that matches the attestation report. A <span class="mono">gateway</span> signature binds the reply to the attested NEAR AI gateway only — it does <i>not</i> by itself prove model TEE execution, and this page labels it exactly that way. Full Intel TDX quote validation runs in NEAR's Verification Center (linked above); this page checks the signer match and the reply signature cryptographically where the browser supports Ed25519.</p>
+    <p class="small" style="margin-top:8px"><b>Honest limits, in plain sight.</b> You still trust this page's host and the CDN that serves the wallet libraries — the checks above run as open, inspectable code in your browser for exactly that reason. The attestation report is fetched from the same NEAR AI API it describes, so treat it as evidence to cross-check in the Verification Center, not as an outside witness. A sealed hash is public forever: anyone who later obtains the exact original document can confirm it matches — never seal hashes of real documents you need to keep unlinkable. And automated redaction can miss an identifier — always read the redacted output before sharing it.</p>
   </div>
 
-  <div class="card">
+  <div class="card" id="step5">
     <h2><span class="n">5</span>Verify a seal</h2>
     <p class="hint">Anyone can audit the chain of custody — no wallet, no key. Paste a document (it is hashed <b>locally in your browser</b>, never sent anywhere) or paste its SHA-256 hash, and this page checks the <span class="mono">seal()</span> records on NEAR testnet.</p>
     <textarea id="verifyIn" placeholder="Paste a document, or a 64-character SHA-256 hash…"></textarea>
     <div class="btnrow">
       <button class="blue" id="btnLookup" type="button">Check the seal on NEAR testnet</button>
+      <button class="ghost" id="btnSampleSeal" type="button">Use the sample document — already sealed on-chain</button>
     </div>
     <div id="lookupResult" style="margin-top:10px"></div>
   </div>
@@ -153,7 +161,8 @@
 const API = "https://cloud-api.near.ai";
 const $ = id => document.getElementById(id);
 const enc = new TextEncoder();
-let state = { reqText:"", resText:"", chatId:"", model:"", report:null, origHash:"", redHash:"", reqHash:"", resHash:"" };
+let state = { reqText:"", resText:"", chatId:"", model:"", report:null, origHash:"", redHash:"", reqHash:"", resHash:"", verdictTier:"" };
+window.__crVerdictTier = "";
 
 const SAMPLE = `INTERNAL MEMO — Q3 VENDOR PAYMENT REVIEW (FICTIONAL SAMPLE DATA)
 
@@ -212,6 +221,7 @@ async function fetchReport(model){
 }
 
 $("btnSample").onclick = () => { $("docIn").value = SAMPLE; };
+$("btnSampleSeal").onclick = () => { $("verifyIn").value = SAMPLE; $("btnLookup").click(); };
 
 function loadTextFile(file){
   if(!file) return;
@@ -235,6 +245,11 @@ $("btnClean").onclick = async () => {
   if(!doc.trim()){ st.textContent = "⚠️ Paste a document first — or load the fictional sample."; return; }
   $("btnClean").disabled = true;
   $("checks").innerHTML = ""; $("verdict").style.display = "none"; $("sigDetail").textContent = ""; $("redactReport").textContent = "";
+  $("sealPayload").textContent = "{}"; $("docOut").textContent = "—";
+  $("hChat").textContent = "—"; $("hOrig").textContent = "—"; $("hRed").textContent = "—"; $("hReq").textContent = "—"; $("hRes").textContent = "—";
+  $("leakWarn").textContent = ""; $("leakWarn").style.display = "none";
+  state.verdictTier = ""; window.__crVerdictTier = "";
+  state.chatId = ""; state.origHash = ""; state.redHash = ""; state.reqHash = ""; state.resHash = "";
   try{
     st.textContent = "Fetching attestation report (preflight evidence)…";
     try{ state.report = await fetchReport(model); }
@@ -258,7 +273,15 @@ $("btnClean").onclick = async () => {
       body: state.reqText
     });
     state.resText = await resp.text();                  // exact response bytes
-    if(!resp.ok) throw new Error("chat completion HTTP " + resp.status + " — " + state.resText.slice(0,220));
+    if(!resp.ok){
+      const s = resp.status;
+      throw new Error(
+        s === 401 ? "API key rejected (401) — check your NEAR AI key in Step 0." :
+        s === 402 ? "Out of NEAR AI credit (402) — check your key's balance." :
+        s === 429 ? "Rate limited (429) — wait a moment and retry." :
+        s >= 500  ? "NEAR AI server error (" + s + ") — try again shortly." :
+                    "NEAR AI request failed (HTTP " + s + ") — check your key and try again.");
+    }
     const data = JSON.parse(state.resText);
     const out = data.choices && data.choices[0] && data.choices[0].message ? data.choices[0].message.content : "";
     state.chatId = data.id || "";
@@ -277,6 +300,27 @@ $("btnClean").onclick = async () => {
     $("hRed").textContent = state.redHash;
     $("hReq").textContent = state.reqHash;
     $("hRes").textContent = state.resHash;
+    /* Warn-only checks on the redacted output — they never modify `out`,
+       the hashes, or the seal payload. */
+    const warnings = [];
+    const finishReason = data.choices && data.choices[0] ? data.choices[0].finish_reason : null;
+    if(finishReason === "length")
+      warnings.push("⚠️ The model's output hit the length limit — the redacted text may be TRUNCATED. Split the document into smaller parts and clean each part; do not seal this run as a complete document.");
+    const leakPats = [
+      /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/,
+      /\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,}(?: ?[A-Z0-9]{1,3})?\b/,
+      /\+?\d(?:[\s().-]*\d){8,}/,
+      /\b\d{3}-\d{2}-\d{4}\b|\b\d{2}-\d{7}\b/,
+      /\b[A-Z]{1,3}\d{6,9}\b/
+    ];
+    if(out && leakPats.some(re => re.test(out)))
+      warnings.push("⚠️ Possible identifier survived redaction — check the output above before sharing it.");
+    const lw = $("leakWarn");
+    if(warnings.length){
+      lw.innerHTML = "";
+      warnings.forEach(w => { const d = document.createElement("div"); d.textContent = w; lw.appendChild(d); });
+      lw.style.display = "block";
+    }
     $("sealPayload").textContent = JSON.stringify({
       app:"cleanroom-seal", version:1, model: model, completion_id: state.chatId,
       original_sha256: state.origHash, redacted_sha256: state.redHash
@@ -317,8 +361,10 @@ async function verify(key){
     if(!sig) add("fail", "Signature endpoint returned no usable signature (HTTP " + r.status + "). A reply without a signature is not verified.");
   }catch(e){ add("fail", "Signature fetch failed: " + e.message); }
 
+  let sigKind = "", textMatch = false, signerOk = false, cryptoOk = null;
   if(sig){
     const kind = sig.signature_kind || sig.signatureKind || "";
+    sigKind = kind;
     const text = sig.text || "";
     const signer = String(sig.signing_address || "").toLowerCase();
     const algo = String(sig.signing_algo || sig.signingAlgo || "ed25519").toLowerCase();
@@ -328,18 +374,19 @@ async function verify(key){
     const expected = kind === "provider_tee"
       ? state.model + ":" + state.reqHash + ":" + state.resHash
       : state.reqHash + ":" + state.resHash;
-    if(text === expected) { add("pass", "Signed text matches exactly: SHA-256 of the exact request bytes and response bytes from THIS run."); pass+=0; }
+    if(text === expected) { textMatch = true; add("pass", "Signed text matches exactly: SHA-256 of the exact request bytes and response bytes from THIS run."); }
     else add("fail", "Signed text does NOT match the hashes of this run's exact bytes. Do not trust this reply.");
     if(text === expected) { /* counted below via crypto check */ }
 
     const signers = findSigners(state.report);
     const pool = kind === "provider_tee" ? signers.models : (signers.gateway ? [signers.gateway] : []);
     const signerMatch = signer && pool.some(p => p === signer || p === signer.replace(/^0x/,"") || signer === p.replace(/^0x/,""));
+    signerOk = !!signerMatch;
     if(state.report) add(signerMatch ? "pass" : "fail",
       signerMatch ? "Signer matches the preflight attestation evidence (" + (kind === "provider_tee" ? "model TEE report" : "gateway report") + ")."
                   : "Signer does NOT match the preflight attestation evidence.");
 
-    let cryptoOk = null;
+    cryptoOk = null;
     if(algo === "ed25519" && signer && sig.signature){
       try{
         const pub = hexToBytes(signer);
@@ -361,9 +408,19 @@ async function verify(key){
     vc.onclick = () => window.open("https://cloud.near.ai/verify?model=" + encodeURIComponent(state.model), "_blank");
   }
 
+  /* Tiered verdict: green only for a fully checked provider_tee run; amber
+     when nothing failed but the run is gateway-only or the in-browser
+     crypto check was unavailable; red on any failed check. */
+  let tier;
+  if(fail > 0) tier = "bad";
+  else if(sigKind === "provider_tee" && textMatch && signerOk && cryptoOk === true) tier = "green";
+  else tier = "amber";
+  state.verdictTier = tier; window.__crVerdictTier = tier;
+
   const v = $("verdict");
   v.style.display = "block";
-  if(fail === 0 && pass >= 2){ v.className = "verdict ok"; v.textContent = "🟢 PROOF VERIFIED — this redaction is bound by signature to attested NEAR AI infrastructure."; }
+  if(tier === "green"){ v.className = "verdict ok"; v.textContent = "🟢 PROOF VERIFIED — this redaction is bound by signature to attested NEAR AI infrastructure."; }
+  else if(tier === "amber"){ v.className = "verdict warn"; v.textContent = "⚠️ PARTIAL — gateway-only signature and/or the in-browser crypto check was unavailable in this browser — this is NOT model-TEE proof. Use the NEAR Verification Center for the full check."; }
   else { v.className = "verdict bad"; v.textContent = "🔴 NOT FULLY VERIFIED — see the failed checks above. Do not rely on this run."; }
 }
 
@@ -397,10 +454,14 @@ $("btnLookup").onclick = async () => {
   try{
     const hash = /^[0-9a-fA-F]{64}$/.test(raw) ? raw.toLowerCase() : await sha256hex(raw);
     box.innerHTML = "<p class='small'>Checking the seal records for <span class='mono'>" + hash.slice(0, 16) + "…</span></p>";
-    let rec = null;
-    try{ rec = await viewSealByDocHash(hash); }catch(e){ rec = null; }
+    let rec = null, rpcFailed = false;
+    try{ rec = await viewSealByDocHash(hash); }catch(e){ rpcFailed = true; }
     box.innerHTML = "";
-    if(!rec){
+    if(rpcFailed){
+      const p = document.createElement("p"); p.className = "small";
+      p.textContent = "⚠️ Couldn't reach the NEAR testnet RPC — this is NOT a 'not sealed' result. Check your connection and try again.";
+      box.appendChild(p);
+    } else if(!rec){
       const p = document.createElement("p"); p.className = "small";
       p.textContent = "🔍 No seal found on NEAR testnet for hash " + hash + " — this document was never sealed (or the hash does not match the sealed original exactly).";
       box.appendChild(p);
@@ -471,9 +532,11 @@ function refresh(){
   if(accountId){
     btnWallet.textContent = "Disconnect " + accountId;
     const p = currentPayload();
-    btnSeal.disabled = !p;
+    const tier = window.__crVerdictTier || "";
+    btnSeal.disabled = !(p && tier === "green");
     if(!new URLSearchParams(location.search).get("transactionHashes"))
-      setStatus(p ? "Wallet connected as " + accountId + ". Ready to seal this run's hashes on " + CONTRACT + " (testnet, gas only)."
+      setStatus(p && tier === "green" ? "Wallet connected as " + accountId + ". Ready to seal this run's hashes on " + CONTRACT + " (testnet, gas only)."
+                  : p ? "Wallet connected as " + accountId + ". Sealing unlocks when Step 3 shows 🟢 PROOF VERIFIED for this run — a partial or unverified run cannot be sealed."
                   : "Wallet connected as " + accountId + ". Run a Clean first — the seal needs this run's hashes.");
   } else {
     btnWallet.textContent = "Connect NEAR testnet wallet";
@@ -574,6 +637,12 @@ btnSeal.onclick = async () => {
 /* Enable the Seal button as soon as a Clean fills the payload. */
 new MutationObserver(() => { refresh(); })
   .observe(document.getElementById("sealPayload"), { childList: true, characterData: true, subtree: true });
+
+/* Re-check the Seal button when the Step 3 verdict changes — sealing is
+   gated on a green (fully verified provider_tee) verdict. */
+const verdictEl = document.getElementById("verdict");
+if(verdictEl) new MutationObserver(() => { refresh(); })
+  .observe(verdictEl, { attributes: true, childList: true, characterData: true, subtree: true });
 
 init();
 </script>

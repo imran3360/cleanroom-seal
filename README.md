@@ -10,10 +10,12 @@ key cleaned the sample memo and the browser verification panel returned
 **PROOF VERIFIED** with signature kind **`provider_tee`** (the model-TEE tier).
 The `seal()` contract is **deployed on NEAR testnet at
 [`imran3360.testnet`](https://testnet.nearblocks.io/address/imran3360.testnet)**
-(deploy tx `9oBx4AgsQu81uxLBNKVH6i6kujQMxd6HN8oh7x5bJGgf`) and **two seals are
-recorded on-chain** (`seal_count` = 2, both verified via RPC) — the second was
+(deploy tx `9oBx4AgsQu81uxLBNKVH6i6kujQMxd6HN8oh7x5bJGgf`) and **three seals are
+recorded on-chain** (`seal_count` = 3, all verified via RPC) — the second was
 sealed from the demo page itself through a Meteor testnet wallet
-(block 277497139). Contract source: `seal-contract.js`; build/deploy guide:
+(block 277497139).
+**Live verified run #3:** sealed from the demo page by `equallace2782.testnet`,
+completion `c017c39f1dc0400abc4f435bcb74262c`, block `277510508`. Contract source: `seal-contract.js`; build/deploy guide:
 `DEPLOY.md`. The demo page seals from the browser with a testnet wallet via
 NEAR Wallet Selector (Meteor Wallet), and anyone can audit a seal afterwards
 with the read-only **Verify a seal** lookup (Step 5 — no wallet, no key).
@@ -28,8 +30,9 @@ by design: you have to trust the operator.
 1. You paste a sensitive document in a static web page (bring-your-own NEAR AI key,
    held in tab memory only).
 2. The document is redacted by a model running inside **NEAR AI Cloud's Trusted
-   Execution Environments (TEEs)** — model providers, cloud providers and NEAR
-   itself cannot see the input.
+   Execution Environments (TEEs)** — the model sees the document inside the
+   enclave; the operator cannot read it there. That is the claim the
+   attestation and signature checks below exist to test.
 3. The page then **verifies the proof in your browser**: it fetched the NEAR AI
    attestation report *before* the request, recomputes SHA-256 over the exact
    request and response bytes, fetches the completion's signature, checks the
