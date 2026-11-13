@@ -82,8 +82,11 @@
     <textarea id="docIn" placeholder="Paste a document with names, addresses, account numbers…"></textarea>
     <div class="btnrow">
       <button class="ghost" id="btnSample" type="button">Load fictional sample memo</button>
+      <button class="ghost" id="btnFile" type="button">Load a .txt file</button>
       <button id="btnClean" type="button">🔒 Clean inside the TEE</button>
     </div>
+    <input type="file" id="fileIn" accept=".txt,.md,text/plain" hidden>
+    <p class="small">You can also drag &amp; drop a .txt file onto the box above. Files are read locally in your browser — nothing is uploaded.</p>
     <p class="status" id="cleanStatus"></p>
   </div>
 
@@ -106,6 +109,7 @@
       <span class="k">request SHA-256</span><span id="hReq">—</span>
       <span class="k">response SHA-256</span><span id="hRes">—</span>
     </div>
+    <p class="small" id="redactReport" style="margin-top:10px"></p>
   </div>
 
   <div class="card">
@@ -130,6 +134,16 @@
     </div>
     <p class="small" id="sealStatus" style="margin-top:10px">Connect a NEAR testnet wallet to seal this run's hashes on-chain. The seal stores hashes only — never the document.</p>
     <p class="small" style="margin-top:12px"><b>What this proves — and what it doesn't.</b> A <span class="mono">provider_tee</span> signature binds the reply to a model-serving TEE signer that matches the attestation report. A <span class="mono">gateway</span> signature binds the reply to the attested NEAR AI gateway only — it does <i>not</i> by itself prove model TEE execution, and this page labels it exactly that way. Full Intel TDX quote validation runs in NEAR's Verification Center (linked above); this page checks the signer match and the reply signature cryptographically where the browser supports Ed25519.</p>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">5</span>Verify a seal</h2>
+    <p class="hint">Anyone can audit the chain of custody — no wallet, no key. Paste a document (it is hashed <b>locally in your browser</b>, never sent anywhere) or paste its SHA-256 hash, and this page checks the <span class="mono">seal()</span> records on NEAR testnet.</p>
+    <textarea id="verifyIn" placeholder="Paste a document, or a 64-character SHA-256 hash…"></textarea>
+    <div class="btnrow">
+      <button class="blue" id="btnLookup" type="button">Check the seal on NEAR testnet</button>
+    </div>
+    <div id="lookupResult" style="margin-top:10px"></div>
   </div>
 
   <p class="small" style="text-align:center;margin-top:18px">CleanRoom Seal — built for NEAR HACKATHON, Nov 2026 · Code is public · Demo data is fictional</p>
@@ -199,6 +213,19 @@ async function fetchReport(model){
 
 $("btnSample").onclick = () => { $("docIn").value = SAMPLE; };
 
+function loadTextFile(file){
+  if(!file) return;
+  if(file.size > 200000){ $("cleanStatus").textContent = "⚠️ That file is over 200 KB — paste a smaller test document."; return; }
+  const rd = new FileReader();
+  rd.onload = () => { $("docIn").value = String(rd.result || ""); $("cleanStatus").textContent = "Loaded " + file.name + " locally — nothing was uploaded."; };
+  rd.onerror = () => { $("cleanStatus").textContent = "⚠️ Could not read that file."; };
+  rd.readAsText(file);
+}
+$("btnFile").onclick = () => $("fileIn").click();
+$("fileIn").onchange = e => { loadTextFile(e.target.files[0]); e.target.value = ""; };
+$("docIn").addEventListener("dragover", e => e.preventDefault());
+$("docIn").addEventListener("drop", e => { e.preventDefault(); loadTextFile(e.dataTransfer.files && e.dataTransfer.files[0]); });
+
 $("btnClean").onclick = async () => {
   const key = $("apiKey").value.trim();
   const model = $("model").value;
@@ -207,7 +234,7 @@ $("btnClean").onclick = async () => {
   if(!key){ st.textContent = "⚠️ Paste your NEAR AI API key first (Step 0)."; return; }
   if(!doc.trim()){ st.textContent = "⚠️ Paste a document first — or load the fictional sample."; return; }
   $("btnClean").disabled = true;
-  $("checks").innerHTML = ""; $("verdict").style.display = "none"; $("sigDetail").textContent = "";
+  $("checks").innerHTML = ""; $("verdict").style.display = "none"; $("sigDetail").textContent = ""; $("redactReport").textContent = "";
   try{
     st.textContent = "Fetching attestation report (preflight evidence)…";
     try{ state.report = await fetchReport(model); }
@@ -237,6 +264,10 @@ $("btnClean").onclick = async () => {
     state.chatId = data.id || "";
     $("docOrig").textContent = doc;
     $("docOut").textContent = out || "(empty model output)";
+    const blocks = (out.match(/█+/g) || []).length;
+    $("redactReport").textContent = blocks
+      ? "Redaction report: " + blocks + " redaction block" + (blocks === 1 ? "" : "s") + " (███) applied by the TEE · original " + doc.length + " characters → redacted " + out.length + " characters."
+      : "Redaction report: the model returned no ███ blocks — check the output before relying on it.";
     state.origHash = await sha256hex(doc);
     state.redHash = await sha256hex(out);
     state.reqHash = await sha256hex(state.reqText);
@@ -338,6 +369,72 @@ async function verify(key){
 
 $("btnCopySeal").onclick = async () => {
   try{ await navigator.clipboard.writeText($("sealPayload").textContent); $("btnCopySeal").textContent = "Copied ✓"; setTimeout(()=>$("btnCopySeal").textContent="Copy seal payload",1500); }catch(e){}
+};
+
+/* Step 5 — verify a seal. Read-only contract lookup: a pasted document is
+   hashed locally (SHA-256 in this tab); a pasted 64-hex hash is used as-is.
+   Only the hash ever leaves the browser, as a public view call. */
+async function viewSealByDocHash(hash){
+  const args = btoa(JSON.stringify({ doc_hash: hash }));
+  const r = await fetch("https://rpc.testnet.near.org", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: "seal-lookup", method: "query",
+      params: { request_type: "call_function", account_id: "imran3360.testnet", method_name: "get_seal_by_doc_hash", args_base64: args, finality: "optimistic" } })
+  });
+  const j = await r.json();
+  if(j && j.result && Array.isArray(j.result.result))
+    return JSON.parse(new TextDecoder().decode(new Uint8Array(j.result.result)));
+  throw new Error("lookup failed");
+}
+
+$("btnLookup").onclick = async () => {
+  const box = $("lookupResult");
+  const raw = $("verifyIn").value.trim();
+  box.innerHTML = "";
+  if(!raw){ box.innerHTML = "<p class='small'>Paste a document or a SHA-256 hash first.</p>"; return; }
+  $("btnLookup").disabled = true;
+  try{
+    const hash = /^[0-9a-fA-F]{64}$/.test(raw) ? raw.toLowerCase() : await sha256hex(raw);
+    box.innerHTML = "<p class='small'>Checking the seal records for <span class='mono'>" + hash.slice(0, 16) + "…</span></p>";
+    let rec = null;
+    try{ rec = await viewSealByDocHash(hash); }catch(e){ rec = null; }
+    box.innerHTML = "";
+    if(!rec){
+      const p = document.createElement("p"); p.className = "small";
+      p.textContent = "🔍 No seal found on NEAR testnet for hash " + hash + " — this document was never sealed (or the hash does not match the sealed original exactly).";
+      box.appendChild(p);
+    } else {
+      const head = document.createElement("p"); head.className = "small";
+      head.textContent = "✅ SEALED — this exact document hash is recorded on NEAR testnet:";
+      box.appendChild(head);
+      const grid = document.createElement("div"); grid.className = "hashgrid mono";
+      const rows = [
+        ["sealed by", rec.owner || "—"],
+        ["document SHA-256", rec.doc_hash || hash],
+        ["redacted SHA-256", rec.redacted_hash || "—"],
+        ["completion id", rec.completion_id || "—"],
+        ["model", rec.model || "—"],
+        ["block height", String(rec.block_height ?? "—")],
+        ["sealed at", rec.timestamp_ms ? new Date(rec.timestamp_ms).toUTCString() : "—"]
+      ];
+      for(const [k, v] of rows){
+        const ks = document.createElement("span"); ks.className = "k"; ks.textContent = k;
+        const vs = document.createElement("span"); vs.textContent = v;
+        grid.appendChild(ks); grid.appendChild(vs);
+      }
+      box.appendChild(grid);
+      const link = document.createElement("p"); link.className = "small";
+      const a = document.createElement("a");
+      a.href = "https://testnet.nearblocks.io/address/imran3360.testnet";
+      a.target = "_blank"; a.rel = "noopener";
+      a.textContent = "Open the seal contract on NearBlocks ↗";
+      link.appendChild(a); box.appendChild(link);
+    }
+  }catch(e){
+    box.innerHTML = "<p class='small'>❌ Lookup failed: " + e.message + "</p>";
+  }
+  $("btnLookup").disabled = false;
 };
 </script>
 
