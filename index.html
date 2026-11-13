@@ -120,9 +120,14 @@
 
   <div class="card">
     <h2><span class="n">4</span>Seal on NEAR</h2>
-    <p class="hint">The chain-of-custody record contains <b>only hashes</b> — never the document. Phase 2 wires this payload to a <span class="mono">seal()</span> contract on NEAR testnet; until then, this is the exact payload that will be sealed.</p>
+    <p class="hint">The chain-of-custody record contains <b>only hashes</b> — never the document. This payload goes to the <span class="mono">seal()</span> contract at <a href="https://testnet.nearblocks.io/address/imran3360.testnet" target="_blank" rel="noopener"><span class="mono">imran3360.testnet</span></a> on NEAR testnet. Connect a <b>testnet</b> wallet and seal this run — gas only, a fraction of a cent of test NEAR.</p>
     <pre id="sealPayload">{}</pre>
     <div class="btnrow"><button class="ghost" id="btnCopySeal" type="button">Copy seal payload</button></div>
+    <div class="btnrow">
+      <button class="ghost" id="btnWallet" type="button">Connect NEAR testnet wallet</button>
+      <button class="blue" id="btnSeal" type="button" disabled>Seal this run on NEAR testnet</button>
+    </div>
+    <p class="small" id="sealStatus" style="margin-top:10px">Connect a NEAR testnet wallet to seal this run's hashes on-chain. The seal stores hashes only — never the document.</p>
     <p class="small" style="margin-top:12px"><b>What this proves — and what it doesn't.</b> A <span class="mono">provider_tee</span> signature binds the reply to a model-serving TEE signer that matches the attestation report. A <span class="mono">gateway</span> signature binds the reply to the attested NEAR AI gateway only — it does <i>not</i> by itself prove model TEE execution, and this page labels it exactly that way. Full Intel TDX quote validation runs in NEAR's Verification Center (linked above); this page checks the signer match and the reply signature cryptographically where the browser supports Ed25519.</p>
   </div>
 
@@ -333,6 +338,108 @@ async function verify(key){
 $("btnCopySeal").onclick = async () => {
   try{ await navigator.clipboard.writeText($("sealPayload").textContent); $("btnCopySeal").textContent = "Copied ✓"; setTimeout(()=>$("btnCopySeal").textContent="Copy seal payload",1500); }catch(e){}
 };
+</script>
+
+<script type="module">
+/* Step 4 — NEAR testnet wallet + seal() wiring.
+   Uses near-api-js from CDN with the classic web-wallet redirect flow
+   (MyNearWallet testnet). Sign-in requests a function-call key for the
+   seal contract only. No keys ever touch this page's code. */
+import * as nearAPI from "https://cdn.jsdelivr.net/npm/near-api-js@4.0.4/+esm";
+
+const CONTRACT = "imran3360.testnet";
+const statusEl = document.getElementById("sealStatus");
+const btnWallet = document.getElementById("btnWallet");
+const btnSeal = document.getElementById("btnSeal");
+let wallet = null;
+
+function setStatus(t){ if(statusEl) statusEl.textContent = t; }
+
+function currentPayload(){
+  try{
+    const p = JSON.parse(document.getElementById("sealPayload").textContent || "{}");
+    if(p && /^[0-9a-f]{64}$/.test(p.original_sha256 || "") && /^[0-9a-f]{64}$/.test(p.redacted_sha256 || "")) return p;
+  }catch(e){}
+  return null;
+}
+
+function refresh(){
+  if(!wallet) return;
+  if(wallet.isSignedIn()){
+    btnWallet.textContent = "Disconnect " + wallet.getAccountId();
+    const p = currentPayload();
+    btnSeal.disabled = !p;
+    if(!new URLSearchParams(location.search).get("transactionHashes"))
+      setStatus(p ? "Wallet connected as " + wallet.getAccountId() + ". Ready to seal this run's hashes on " + CONTRACT + " (testnet, gas only)."
+                  : "Wallet connected as " + wallet.getAccountId() + ". Run a Clean first — the seal needs this run's hashes.");
+  } else {
+    btnWallet.textContent = "Connect NEAR testnet wallet";
+    btnSeal.disabled = true;
+  }
+}
+
+function showReturnResult(){
+  const q = new URLSearchParams(location.search);
+  const hash = q.get("transactionHashes");
+  const err = q.get("errorMessage") || q.get("errorCode");
+  if(err){ setStatus("Wallet returned an error: " + decodeURIComponent(err)); return; }
+  if(hash){
+    setStatus("✅ Sealed on NEAR testnet — tx " + hash + ". ");
+    const a = document.createElement("a");
+    a.href = "https://testnet.nearblocks.io/txns/" + hash;
+    a.target = "_blank"; a.rel = "noopener";
+    a.textContent = "View the seal on NearBlocks ↗";
+    statusEl.appendChild(a);
+  }
+}
+
+async function init(){
+  try{
+    const near = await nearAPI.connect({
+      networkId: "testnet",
+      keyStore: new nearAPI.keyStores.BrowserLocalStorageKeyStore(),
+      nodeUrl: "https://rpc.testnet.near.org",
+      walletUrl: "https://testnet.mynearwallet.com",
+      helperUrl: "https://helper.testnet.near.org",
+    });
+    wallet = new nearAPI.WalletConnection(near, "cleanroom-seal");
+    showReturnResult();
+    refresh();
+  }catch(e){ setStatus("Wallet init failed: " + e.message); }
+}
+
+btnWallet.onclick = async () => {
+  if(!wallet) return;
+  if(wallet.isSignedIn()){ wallet.signOut(); location.href = location.pathname; }
+  else {
+    try{ await wallet.requestSignIn({ contractId: CONTRACT }); }
+    catch(e){ setStatus("Sign-in failed: " + e.message); }
+  }
+};
+
+btnSeal.onclick = async () => {
+  const p = currentPayload();
+  if(!p){ setStatus("Run a Clean first — there are no hashes to seal yet."); return; }
+  if(!wallet || !wallet.isSignedIn()){ setStatus("Connect your testnet wallet first."); return; }
+  try{
+    setStatus("Sealing… (your wallet signs a function-call with the key granted at sign-in, or asks you to approve.)");
+    await wallet.account().functionCall({
+      contractId: CONTRACT,
+      methodName: "seal",
+      args: { doc_hash: p.original_sha256, redacted_hash: p.redacted_sha256, completion_id: p.completion_id || "", model: p.model || "" },
+      gas: "30000000000000",
+      attachedDeposit: "0",
+    });
+    const c = await wallet.account().viewFunction({ contractId: CONTRACT, methodName: "seal_count", args: {} });
+    setStatus("✅ Sealed on NEAR testnet. Total seals on the contract now: " + c + ". Look up this run with get_seal_by_doc_hash on NearBlocks.");
+  }catch(e){ setStatus("Seal failed: " + e.message); }
+};
+
+/* Enable the Seal button as soon as a Clean fills the payload. */
+new MutationObserver(() => { if(wallet && wallet.isSignedIn()) refresh(); })
+  .observe(document.getElementById("sealPayload"), { childList: true, characterData: true, subtree: true });
+
+init();
 </script>
 </body>
 </html>

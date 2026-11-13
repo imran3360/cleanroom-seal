@@ -2,6 +2,18 @@
 
 Built at **NEAR HACKATHON** (Nov 1–14, 2026) · Track: **Privacy & Private AI** (`privacy`)
 
+**▶ Live demo: https://imran3360.github.io/cleanroom-seal/**
+
+**Status (Nov 13, 2026):** the full flow runs live end-to-end — a real Builders
+key cleaned the sample memo and the browser verification panel returned
+**PROOF VERIFIED** with signature kind **`provider_tee`** (the model-TEE tier).
+The `seal()` contract is **deployed on NEAR testnet at
+[`imran3360.testnet`](https://testnet.nearblocks.io/address/imran3360.testnet)**
+(deploy tx `9oBx4AgsQu81uxLBNKVH6i6kujQMxd6HN8oh7x5bJGgf`) and a first seal is
+recorded on-chain (`seal_count` = 1, verified via RPC). Contract source:
+`seal-contract.js`; build/deploy guide: `DEPLOY.md`. The demo page seals from
+the browser with a testnet wallet (function-call key for this contract only).
+
 ## The problem
 Journalists, lawyers, clinics and whistleblowers need AI to clean documents before
 sharing them — but pasting a leak, a case file or a patient note into a normal AI
@@ -19,8 +31,8 @@ by design: you have to trust the operator.
    request and response bytes, fetches the completion's signature, checks the
    signed text, matches the signer against the preflight attestation evidence,
    and verifies the Ed25519 signature where the browser supports it.
-4. Only **hashes** — never the document — form a seal payload for a chain-of-custody
-   record on NEAR (testnet `seal()` contract, phase 2).
+4. Only **hashes** — never the document — are sealed on NEAR testnet via the
+   `seal()` contract, forming a public chain-of-custody record.
 
 If any check fails, the page shows red and says **NOT VERIFIED**. It never paints
 a fake green.
@@ -40,7 +52,12 @@ a fake green.
    and a final VERIFIED / NOT VERIFIED verdict.
 6. Click **Open NEAR Verification Center** → NEAR's own page re-checks the model
    attestation in your browser.
-7. Copy the seal payload → it contains only hashes, the model and the completion id.
+7. Click **Connect NEAR testnet wallet** → sign in with a testnet wallet
+   (MyNearWallet testnet), then **Seal this run on NEAR testnet** → the page
+   calls `seal()` with only the two hashes, the model and the completion id,
+   and reports the contract's new `seal_count`. Verify the record yourself on
+   [NearBlocks testnet](https://testnet.nearblocks.io/address/imran3360.testnet)
+   (`get_seal_by_doc_hash` with the original SHA-256).
 
 ## How NEAR fits
 - **NEAR AI Cloud** (cloud-api.near.ai) is the engine: OpenAI-compatible chat
@@ -61,8 +78,9 @@ a fake green.
   Only `provider_tee` binds to a model-serving TEE signer.
 - Full Intel TDX quote validation is done by NEAR's Verification Center (linked
   from the page); this page checks signer matching and the reply signature.
-- The seal contract is phase 2; until it is deployed, the page shows the exact
-  seal payload that will be submitted.
+- The seal contract is a hackathon demo on **testnet**: records are permanent
+  and public there, so never seal hashes of real documents you need to keep
+  unlinkable — a hash of a known document is confirmable by anyone who has it.
 - Demo data is fictional. Never paste real personal data into any demo.
 
 ## Stack
